@@ -19,11 +19,8 @@ df["Date"] = pd.to_datetime(df.Date, format="%Y-%m-%d")
 df.index = df['Date']
 
 plt.figure(figsize=(16, 8))
-plt.plot(df["Close"], label='Close Price history using LSTM')
-plt.title("Close Price history using LSTM")
-
-from keras.models import Sequential
-from keras.layers import LSTM, Dropout, Dense
+plt.plot(df["Close"], label='Close Price history using SimpleRNN')
+plt.title("Close Price history using SimpleRNN")
 
 data = df.sort_index(ascending=True, axis=0)
 new_dataset = pd.DataFrame(index=range(0, len(df)), columns=['Date', 'Close'])
@@ -53,13 +50,16 @@ x_train_data, y_train_data = np.array(x_train_data), np.array(y_train_data)
 
 x_train_data = np.reshape(x_train_data, (x_train_data.shape[0], x_train_data.shape[1], 1))
 
-lstm_model = Sequential()
-lstm_model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train_data.shape[1], 1)))
-lstm_model.add(LSTM(units=50))
-lstm_model.add(Dense(1))
+from keras.layers import Activation, Masking, Dense, SimpleRNN
+from keras.models import Sequential
 
-lstm_model.compile(loss='mean_squared_error', optimizer='adam')
-lstm_model.fit(x_train_data, y_train_data, epochs=1, batch_size=1, verbose=2)
+rnn_model = Sequential()
+rnn_model.add(SimpleRNN(units=50, return_sequences=True, input_shape=(x_train_data.shape[1], 1)))
+rnn_model.add(SimpleRNN(units=50))
+rnn_model.add(Dense(1))
+
+rnn_model.compile(loss='mean_squared_error', optimizer='adam')
+rnn_model.fit(x_train_data, y_train_data, epochs=1, batch_size=1, verbose=2)
 
 inputs_data = new_dataset[len(new_dataset) - len(valid_data) - 60:].values
 inputs_data = inputs_data.reshape(-1, 1)
@@ -71,10 +71,10 @@ for i in range(60, inputs_data.shape[0]):
 X_test = np.array(X_test)
 
 X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
-predicted_closing_price = lstm_model.predict(X_test)
+predicted_closing_price = rnn_model.predict(X_test)
 predicted_closing_price = scaler.inverse_transform(predicted_closing_price)
 
-lstm_model.save("saved_model.h5")
+# rnn_model.save("saved_rnn_model.h5")
 
 train_data = new_dataset[:987]
 valid_data = new_dataset[987:]
