@@ -8,6 +8,7 @@ from keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 import os
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 pd.options.mode.chained_assignment = None
 
@@ -49,7 +50,11 @@ x_train, y_train = np.array(x_train), np.array(y_train)
 
 x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
 
-model = load_model("saved_model.h5")
+model = load_model("saved_rnn_model.h5")
+# model = load_model("saved_model.h5")
+# import pickle
+# model = pickle.load(open("saved_XGB_model.h5", "rb"))
+
 
 inputs = new_data[len(new_data) - len(valid) - 60:].values
 inputs = inputs.reshape(-1, 1)

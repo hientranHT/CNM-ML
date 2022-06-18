@@ -74,7 +74,7 @@ X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
 predicted_closing_price = rnn_model.predict(X_test)
 predicted_closing_price = scaler.inverse_transform(predicted_closing_price)
 
-# rnn_model.save("saved_rnn_model.h5")
+rnn_model.save("saved_rnn_model.h5")
 
 train_data = new_dataset[:987]
 valid_data = new_dataset[987:]
