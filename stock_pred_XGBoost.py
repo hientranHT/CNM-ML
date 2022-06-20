@@ -12,8 +12,18 @@ rcParams['figure.figsize'] = 20, 10
 
 scaler = MinMaxScaler(feature_range=(0, 1))
 
-df = pd.read_csv("NSE-TATA.csv")
-df.head()
+data = pd.read_csv("NSE-TATA.csv")
+
+data["Date"] = pd.to_datetime(data.Date, format="%Y-%m-%d")
+data.index = data['Date']
+
+plt.figure(figsize=(16, 8))
+plt.plot(data["Close"], label='Close Price history using XGBoost')
+plt.title("Close Price history using XGBoost")
+
+
+df = data.sort_index(ascending=True, axis=0)
+
 
 df = df[["Close"]].copy()
 df["target"] = df.Close.shift(-1)
@@ -32,19 +42,18 @@ X = train[:, :-1]
 y = train[:, -1]
 
 from xgboost import XGBRegressor
-
-model = XGBRegressor(objective="reg:squarederror", n_estimators=1000)
+from sklearn.metrics import mean_squared_error
 
 def xgb_predict(train, val):
     train = np.array(train)
     X, y = train[:, :-1], train[:, -1]
-    model = XGBRegressor(objective="reg:squarederror", n_estimators=1000)
+    model = XGBRegressor()
     model.fit(X, y)
     val = np.array(val).reshape(1, -1)
     pred = model.predict(val)
     return pred[0]
 
-from sklearn.metrics import mean_squared_error
+
 def validate(data, perc):
     predictions = []
 
@@ -66,5 +75,10 @@ def validate(data, perc):
 
 rmse, y, pred = validate(df, 0.2)
 
+
+n = int(len(df) * (1 - 0.2))
+plt_valid_data = df[n:]
+plt_valid_data['Predictions'] = pred
+plt.plot(plt_valid_data[['Close', "Predictions"]])
 
 
