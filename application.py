@@ -5,6 +5,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import MetaTrader5 as mt5
 from mt5_funcs import get_symbol_names, TIMEFRAMES, TIMEFRAME_DICT
+from keras.models import load_model
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 
 # creates the Dash App
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -44,12 +47,42 @@ app.layout = html.Div([
 
     html.Hr(),
 
-    dcc.Interval(id='update', interval=200),
+    dcc.Interval(id='update', interval=2000),
+
 
     html.Div(id='page-content')
 
 ], style={'margin-left': '5%', 'margin-right': '5%', 'margin-top': '20px'})
 
+def predict(df):
+    model = load_model("saved_model.h5")
+
+    data = df.sort_index(ascending=True, axis=0)
+    new_data = pd.DataFrame(index=range(0, len(df)), columns=['time', 'close'])
+
+    for i in range(0, len(data)):
+        new_data["time"][i] = data['time'][i]
+        new_data["close"][i] = data["close"][i]
+
+    new_data.index = new_data.time
+    new_data.drop("time", axis=1, inplace=True)
+    dataset = new_data.values
+
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaled_data = scaler.fit_transform(dataset)
+
+    inputs = new_data.values
+    inputs = inputs.reshape(-1, 1)
+    inputs = scaler.transform(inputs)
+
+    X_test = np.array(inputs)
+
+    closing_price = model.predict(X_test)
+    closing_price = scaler.inverse_transform(closing_price)
+
+    valid = new_data
+    valid['Predictions'] = closing_price
+    return valid
 
 @app.callback(
     Output('page-content', 'children'),
@@ -68,21 +101,39 @@ def update_ohlc_chart(interval, symbol, timeframe, num_bars):
     df['time'] = pd.to_datetime(df['time'], unit='s')
 
     fig = go.Figure(data=go.Candlestick(x=df['time'],
-                    open=df['open'],
-                    high=df['high'],
-                    low=df['low'],
-                    close=df['close']))
+                                        open=df['open'],
+                                        high=df['high'],
+                                        low=df['low'],
+                                        close=df['close']))
 
     fig.update(layout_xaxis_rangeslider_visible=False)
     fig.update_layout(yaxis={'side': 'right'})
     fig.layout.xaxis.fixedrange = True
     fig.layout.yaxis.fixedrange = True
+    valid = predict(df);
 
     return [
         html.H2(id='chart-details', children=f'{symbol} - {timeframe_str}'),
-        dcc.Graph(figure=fig, config={'displayModeBar': False})
-        ]
+        dcc.Graph(figure=fig, config={'displayModeBar': False}),
+        dcc.Graph(
+            id="Predicted Data",
+            figure={
+                "data": [
+                    go.Scatter(
+                        x=valid.index,
+                        y=valid["Predictions"],
+                        mode='markers'
+                    )
 
+                ],
+                "layout": go.Layout(
+                    title='Predict price use scatter plot',
+                    xaxis={'title': 'Date'},
+                    yaxis={'title': 'Closing Rate'}
+                )
+            }
+        )
+    ]
 
 if __name__ == '__main__':
     # starts the server

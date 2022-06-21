@@ -66,6 +66,7 @@ for i in range(60, inputs.shape[0]):
 X_test = np.array(X_test)
 
 X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
+print(X_test)
 closing_price = model.predict(X_test)
 closing_price = scaler.inverse_transform(closing_price)
 
@@ -121,7 +122,6 @@ app.layout = html.Div([
                             yaxis={'title': 'Closing Rate'}
                         )
                     }
-
                 )
             ])
 

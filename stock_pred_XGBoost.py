@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 import os
 from matplotlib.pylab import rcParams
 from sklearn.preprocessing import MinMaxScaler
+from xgboost import XGBRegressor
+from sklearn.metrics import mean_squared_error
+
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 pd.options.mode.chained_assignment = None
@@ -41,8 +44,10 @@ train, test = train_test_split(df, 0.2)
 X = train[:, :-1]
 y = train[:, -1]
 
-from xgboost import XGBRegressor
-from sklearn.metrics import mean_squared_error
+model = XGBRegressor(objective="reg:squarederror", n_estimators=1000)
+model.fit(X, y)
+
+
 
 def xgb_predict(train, val):
     train = np.array(train)
@@ -80,5 +85,7 @@ n = int(len(df) * (1 - 0.2))
 plt_valid_data = df[n:]
 plt_valid_data['Predictions'] = pred
 plt.plot(plt_valid_data[['Close', "Predictions"]])
+train_data = df[:n]
+plt.plot(train_data["Close"])
 
 

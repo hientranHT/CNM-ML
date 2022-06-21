@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import os
 from matplotlib.pylab import rcParams
 from sklearn.preprocessing import MinMaxScaler
+import tensorflow as tf
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 pd.options.mode.chained_assignment = None
