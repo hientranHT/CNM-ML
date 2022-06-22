@@ -56,6 +56,7 @@ def xgb_predict(train, val):
     model.fit(X, y)
     val = np.array(val).reshape(1, -1)
     pred = model.predict(val)
+    print(val, pred)
     return pred[0]
 
 
@@ -65,7 +66,7 @@ def validate(data, perc):
     train, test = train_test_split(data, perc)
 
     history = [x for x in train]
-
+    print(history)
     for i in range(len(test)):
         test_X, test_y = test[i, :-1], test[i, -1]
 
@@ -87,5 +88,5 @@ plt_valid_data['Predictions'] = pred
 plt.plot(plt_valid_data[['Close', "Predictions"]])
 train_data = df[:n]
 plt.plot(train_data["Close"])
-
+model.save_model("saved_XGB_model.json")
 

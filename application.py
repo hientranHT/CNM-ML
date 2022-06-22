@@ -4,6 +4,8 @@ from dash.dependencies import Input, Output, State
 import pandas as pd
 import plotly.graph_objects as go
 import MetaTrader5 as mt5
+from xgboost import XGBRegressor
+
 from mt5_funcs import get_symbol_names, TIMEFRAMES, TIMEFRAME_DICT
 from keras.models import load_model
 import numpy as np
@@ -35,6 +37,24 @@ num_bars_input = html.Div([
     dbc.Input(id='num-bar-input', type='number', value='20')
 ])
 
+model_predict = html.Div([
+    html.P('Model predict price'),
+    dcc.Dropdown(
+        id='model-predict',
+        options=['LSTM', 'RNN', 'XGB'],
+        value='LSTM'
+    )
+])
+
+type_predict = html.Div([
+    html.P('Model predict price'),
+    dcc.Dropdown(
+        id='type-predict',
+        options=['Closing', 'Price of Change'],
+        value='Closing'
+    )
+])
+
 # creates the layout of the App
 app.layout = html.Div([
     html.H1('Real Time Charts'),
@@ -42,20 +62,65 @@ app.layout = html.Div([
     dbc.Row([
         dbc.Col(symbol_dropdown),
         dbc.Col(timeframe_dropdown),
-        dbc.Col(num_bars_input)
+        dbc.Col(num_bars_input),
+        dbc.Col(model_predict),
+        dbc.Col(type_predict)
     ]),
 
     html.Hr(),
 
     dcc.Interval(id='update', interval=2000),
 
-
     html.Div(id='page-content')
 
 ], style={'margin-left': '5%', 'margin-right': '5%', 'margin-top': '20px'})
 
-def predict(df):
-    model = load_model("saved_model.h5")
+
+def train_test_split(data, perc):
+    data = data.values
+    n = int(len(data) * (1 - perc))
+    return data[:n], data[n:]
+
+
+def xgb_predict(train, val, model):
+    train = np.array(train)
+    X, y = train[:, :-1], train[:, -1]
+
+    model = model
+    model = XGBRegressor()
+    model.fit(X, y)
+    val = np.array(val).reshape(1, -1)
+    pred = model.predict(val)
+    return pred[0]
+
+
+def validate(data, model):
+    predictions = []
+    train, test = train_test_split(data, 0)
+    temp = train
+    train, test = train_test_split(data, 1)
+    history = [x for x in temp]
+    for i in range(len(test)):
+        test_X, test_y = test[i, :-1], test[i, -1]
+
+        pred = xgb_predict(history, test_X[0], model)
+        predictions.append(pred)
+
+        history.append(test[i])
+
+    return predictions
+
+
+def predict(df, name_model_predict, timeframe):
+    if (name_model_predict == 'LSTM'):
+        model = load_model("saved_model.h5")
+
+    if (name_model_predict == 'RNN'):
+        model = load_model("saved_rnn_model.h5")
+
+    if (name_model_predict == 'XGB'):
+        model = XGBRegressor(objective="reg:squarederror", n_estimators=1000)
+        model.load_model("saved_XGB_model.json")
 
     data = df.sort_index(ascending=True, axis=0)
     new_data = pd.DataFrame(index=range(0, len(df)), columns=['time', 'close'])
@@ -68,33 +133,44 @@ def predict(df):
     new_data.drop("time", axis=1, inplace=True)
     dataset = new_data.values
 
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    scaled_data = scaler.fit_transform(dataset)
+    if name_model_predict == 'XGB':
+        data_xgb = df[["close"]].copy()
+        data_xgb["target"] = data_xgb.close.shift(-1)
+        data_xgb["target"][len(data_xgb) - 1] = data_xgb["close"][0]
+        pred = validate(data_xgb, model)
 
-    inputs = new_data.values
-    inputs = inputs.reshape(-1, 1)
-    inputs = scaler.transform(inputs)
+    else:
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        scaled_data = scaler.fit_transform(dataset)
 
-    X_test = np.array(inputs)
+        inputs = new_data.values
+        inputs = inputs.reshape(-1, 1)
+        inputs = scaler.transform(inputs)
 
-    closing_price = model.predict(X_test)
-    closing_price = scaler.inverse_transform(closing_price)
+        X_test = np.array(inputs)
+
+        pred = model.predict(X_test)
+        pred = scaler.inverse_transform(pred)
 
     valid = new_data
-    valid['Predictions'] = closing_price
-    return valid
+    valid['Predictions'] = pred
+
+    return valid, pred[len(pred) - 1]
+
 
 @app.callback(
     Output('page-content', 'children'),
     Input('update', 'n_intervals'),
-    State('symbol-dropdown', 'value'), State('timeframe-dropdown', 'value'), State('num-bar-input', 'value')
+    State('symbol-dropdown', 'value'), State('timeframe-dropdown', 'value'), State('num-bar-input', 'value'),
+    State('model-predict', 'value')
 )
-def update_ohlc_chart(interval, symbol, timeframe, num_bars):
+def update_ohlc_chart(interval, symbol, timeframe, num_bars, model_predict):
     timeframe_str = timeframe
     timeframe = TIMEFRAME_DICT[timeframe]
     num_bars = int(num_bars)
+    name_model_predict = model_predict
 
-    print(symbol, timeframe, num_bars)
+    print(symbol, timeframe, num_bars, name_model_predict)
 
     bars = mt5.copy_rates_from_pos(symbol, timeframe, 0, num_bars)
     df = pd.DataFrame(bars)
@@ -110,10 +186,15 @@ def update_ohlc_chart(interval, symbol, timeframe, num_bars):
     fig.update_layout(yaxis={'side': 'right'})
     fig.layout.xaxis.fixedrange = True
     fig.layout.yaxis.fixedrange = True
-    valid = predict(df);
+    valid, price_predicted_next_timeframe = predict(df, name_model_predict, timeframe);
 
     return [
         html.H2(id='chart-details', children=f'{symbol} - {timeframe_str}'),
+        dcc.Textarea(
+            id='textarea-example',
+            value='Predict price next timeframe: ' + str(price_predicted_next_timeframe),
+            style={'width': '20%', 'height': 80, 'textAlign': 'center'},
+        ),
         dcc.Graph(figure=fig, config={'displayModeBar': False}),
         dcc.Graph(
             id="Predicted Data",
@@ -127,13 +208,14 @@ def update_ohlc_chart(interval, symbol, timeframe, num_bars):
 
                 ],
                 "layout": go.Layout(
-                    title='Predict price use scatter plot',
+                    title='Predict price use scatter plot and ' + name_model_predict + ' model',
                     xaxis={'title': 'Date'},
                     yaxis={'title': 'Closing Rate'}
                 )
             }
         )
     ]
+
 
 if __name__ == '__main__':
     # starts the server
