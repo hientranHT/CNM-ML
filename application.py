@@ -111,8 +111,68 @@ def validate(data, model):
     return predictions
 
 
-def predict(df, name_model_predict, timeframe):
+def predict(df, name_model_predict, name_type_predict):
+    if name_type_predict == 'Price of Change':
+        if (name_model_predict == 'LSTM'):
+            # and name_type_predict == 'Closing'
+            model = load_model("saved_model_POC.h5")
+
+        if (name_model_predict == 'RNN'):
+            model = load_model("saved_rnn_model_POC.h5")
+
+        if (name_model_predict == 'XGB'):
+            model = XGBRegressor(objective="reg:squarederror", n_estimators=1000)
+            model.load_model("saved_XGB_model_POC.json")
+
+        data = df.sort_index(ascending=True, axis=0)
+        new_data = pd.DataFrame(index=range(0, len(df)), columns=['time', 'poc'])
+
+        for i in range(0, len(data)):
+            new_data["time"][i] = data['time'][i]
+            new_data["poc"][i] = data["poc"][i]
+
+        new_data.index = new_data.time
+        new_data.drop("time", axis=1, inplace=True)
+        new_data["poc"][0] = float("NaN")
+        df.dropna(inplace=True)
+        dataset = new_data.values
+
+        if name_model_predict == 'XGB':
+            data_xgb = df[["poc"]].copy()
+            data_xgb["target"] = data_xgb.poc.shift(-1)
+            data_xgb["target"][len(data_xgb) - 1] = data_xgb["poc"][0]
+            pred = validate(data_xgb, model)
+
+        else:
+            scaler = MinMaxScaler(feature_range=(0, 1))
+            scaled_data = scaler.fit_transform(dataset)
+
+            inputs = new_data.values
+            inputs = inputs.reshape(-1, 1)
+            inputs = scaler.transform(inputs)
+
+            X_test = np.array(inputs)
+
+            pred = model.predict(X_test)
+            pred = scaler.inverse_transform(pred)
+
+        if (name_model_predict == 'RNN'):
+            pred = pred * -1
+        if (name_model_predict == 'RNN' or name_model_predict == 'LSTM'):
+            avg = 0
+            for i in range(1, len(pred)):
+                avg += pred[i][0]
+            avg = avg / (len(pred) - 1)
+            for i in range(1, len(pred)):
+                pred[i][0] = pred[i][0] - avg
+
+        valid = new_data
+        valid['Predictions'] = pred
+
+        return valid, pred[len(pred) - 1]
+
     if (name_model_predict == 'LSTM'):
+        # and name_type_predict == 'Closing'
         model = load_model("saved_model.h5")
 
     if (name_model_predict == 'RNN'):
@@ -162,20 +222,28 @@ def predict(df, name_model_predict, timeframe):
     Output('page-content', 'children'),
     Input('update', 'n_intervals'),
     State('symbol-dropdown', 'value'), State('timeframe-dropdown', 'value'), State('num-bar-input', 'value'),
-    State('model-predict', 'value')
+    State('model-predict', 'value'),
+    State('type-predict', 'value')
 )
-def update_ohlc_chart(interval, symbol, timeframe, num_bars, model_predict):
+def update_ohlc_chart(interval, symbol, timeframe, num_bars, model_predict, type_predict):
     timeframe_str = timeframe
     timeframe = TIMEFRAME_DICT[timeframe]
     num_bars = int(num_bars)
     name_model_predict = model_predict
+    name_type_predict = type_predict
 
-    print(symbol, timeframe, num_bars, name_model_predict)
+    print(symbol, timeframe, num_bars, name_model_predict, name_type_predict)
 
     bars = mt5.copy_rates_from_pos(symbol, timeframe, 0, num_bars)
     df = pd.DataFrame(bars)
     df['time'] = pd.to_datetime(df['time'], unit='s')
 
+    temp = []
+    temp.append(0)
+    for i in range(1, len(df)):
+        temp.append(((df["close"][i] / df["close"][i - 1]) - 1) * 100)
+
+    df = df.assign(poc=temp)
     fig = go.Figure(data=go.Candlestick(x=df['time'],
                                         open=df['open'],
                                         high=df['high'],
@@ -186,7 +254,7 @@ def update_ohlc_chart(interval, symbol, timeframe, num_bars, model_predict):
     fig.update_layout(yaxis={'side': 'right'})
     fig.layout.xaxis.fixedrange = True
     fig.layout.yaxis.fixedrange = True
-    valid, price_predicted_next_timeframe = predict(df, name_model_predict, timeframe);
+    valid, price_predicted_next_timeframe = predict(df, name_model_predict, name_type_predict);
 
     return [
         html.H2(id='chart-details', children=f'{symbol} - {timeframe_str}'),
@@ -208,9 +276,9 @@ def update_ohlc_chart(interval, symbol, timeframe, num_bars, model_predict):
 
                 ],
                 "layout": go.Layout(
-                    title='Predict price use scatter plot and ' + name_model_predict + ' model',
+                    title='Predict price use scatter plot by ' + name_model_predict + ' model and ' + name_type_predict,
                     xaxis={'title': 'Date'},
-                    yaxis={'title': 'Closing Rate'}
+                    yaxis={'title': name_type_predict + ' Rate'}
                 )
             }
         )
