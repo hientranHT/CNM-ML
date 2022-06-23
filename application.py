@@ -57,7 +57,7 @@ type_predict = html.Div([
 
 # creates the layout of the App
 app.layout = html.Div([
-    html.H1('Real Time Charts'),
+    html.H1('Web App Predict Stock Price And Real Time Charts'),
 
     dbc.Row([
         dbc.Col(symbol_dropdown),
